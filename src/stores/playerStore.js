@@ -129,6 +129,28 @@ export const usePlayerStore = defineStore('player', () => {
         window.addEventListener('beforeunload', savePlayerState)
     }
 
+    // ========== 自动保存：切歌时 + 播放中定期（解决 Electron 隐藏窗口不触发 beforeunload 的问题） ==========
+    let autoSaveTimer = null
+
+    // 切歌时立即保存
+    watch(currentSong, (song) => {
+        if (song?.path) savePlayerState()
+    })
+
+    // 播放中每 15 秒自动保存；暂停时也保存一次（捕获最终进度）
+    watch(isPlaying, (playing) => {
+        if (autoSaveTimer) {
+            clearInterval(autoSaveTimer)
+            autoSaveTimer = null
+        }
+        if (playing) {
+            autoSaveTimer = setInterval(() => savePlayerState(), 15000)
+        } else {
+            // 暂停时保存一次，确保进度不丢失
+            savePlayerState()
+        }
+    })
+
     const setAudioVolume = (val) => {
         volume.value = val
         if (audio.value) audio.value.volume = val

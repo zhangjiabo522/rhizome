@@ -79,7 +79,10 @@ const volume = ref(1.0)
 
 const minimize = () => window.electron?.minimize()
 const maximize = () => window.electron?.maximize()
-const closeWindow = () => window.electron?.close()
+const closeWindow = () => {
+  playerStore.savePlayerState()
+  window.electron?.close()
+}
 
 const onSeek = (value) => {
   playerStore.seekTo(value)
