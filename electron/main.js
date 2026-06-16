@@ -19,8 +19,6 @@ if (!gotTheLock) {
     })
 }
 
-app.setName('Rhizome')
-app.setAppUserModelId('com.rhizome.music.player')
 
 let win = null
 let tray = null
@@ -342,10 +340,13 @@ const PATHS_FILE = path.join(DATA_DIR, 'music-paths.json')
 const FOLDERS_FILE = path.join(DATA_DIR, 'music-folders.json')
 
 async function ensureDataDir() {
-    try { await fs.mkdir(DATA_DIR, { recursive: true }) } catch {}
+    try { await fs.mkdir(DATA_DIR, { recursive: true }) } catch (e) {
+        console.error('[rhizome] 创建数据目录失败:', DATA_DIR, e.message)
+    }
 }
 
 async function loadJsonFile(filePath, fallback) {
+    await ensureDataDir()
     try {
         const raw = await fs.readFile(filePath, 'utf8')
         return JSON.parse(raw)
@@ -356,7 +357,12 @@ async function loadJsonFile(filePath, fallback) {
 
 async function saveJsonFile(filePath, data) {
     await ensureDataDir()
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8')
+    try {
+        await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8')
+    } catch (e) {
+        console.error('[rhizome] 保存数据失败:', filePath, e.message)
+        throw e
+    }
 }
 
 ipcMain.handle('load-music-paths', async () => {

@@ -35,88 +35,14 @@ export const useLocalMusicStore = defineStore('localMusic', {
                 console.log(`[localMusic] 读取到 ${p.length} 个路径，${f.length} 个文件夹`)
                 if (!p.length) { this.loaded = true; return }
 
-                // 判断格式：第一个元素是对象 → 新格式（含 mtime 缓存）；字符串 → 旧格式
-                const isCached = typeof p[0] === 'object'
-
                 const CONCURRENCY = 25
                 const results = []
-
-                if (isCached && api_?.getFileMtime) {
-                    // 新格式：按 mtime 分批检查，mtime 匹配的走缓存，不匹配的重新解析
-                    const needReparse = []  // mtime 变了，需要重新解析
-                    for (const entry of p) {
-                        if (!entry || typeof entry.path !== 'string') { needReparse.push(entry); continue }
-                        const curMtime = await api_.getFileMtime(entry.path)
-                        if (curMtime > 0 && curMtime === entry.mtime) {
-                            // mtime 未变，直接用缓存
-                            results.push({
-                                path: entry.path,
-                                name: entry.title || entry.name || '',
-                                singer: entry.singer || '未知歌手',
-                                album: entry.album || '',
-                                year: entry.year || null,
-                                genre: entry.genre || '',
-                                track: entry.track || null,
-                                composer: entry.composer || '',
-                                duration: entry.duration || 0,
-                                durationFormat: entry.durationFormat || '00:00',
-                                playUrl: entry.path,
-                                songKey: entry.songKey || '',
-                                coverUrl: entry.coverUrl || '',
-                                lyrics: entry.lyrics || [],
-                                syncedLyrics: entry.syncedLyrics || [],
-                                lyricsSource: entry.lyricsSource || null,
-                                codec: entry._raw?.codec || entry.codec || '',
-                                bitrate: entry._raw?.bitrate || entry.bitrate || null,
-                                sampleRate: entry._raw?.sampleRate || entry.sampleRate || null,
-                                channels: entry._raw?.numberOfChannels || entry.channels || null,
-                                mtime: entry.mtime || 0,
-                                _cached: true,
-                            })
-                        } else {
-                            needReparse.push(entry.path)
-                        }
-                    }
-                    console.log(`[localMusic] 缓存命中 ${results.length}，需重新解析 ${needReparse.length}`)
-
-                    // 解析 mtime 变更的文件
-                    for (let i = 0; i < needReparse.length; i += CONCURRENCY) {
-                        const batch = needReparse.slice(i, i + CONCURRENCY)
-                        const parsed = await Promise.all(batch.map(async (fp) => {
-                            try {
-                                const raw = await api_?.parseAudio?.(fp)
-                                if (!raw) return null
-                                return {
-                                    path: raw.path, name: raw.title, singer: raw.singer,
-                                    album: raw.album || '', year: raw.year || null,
-                                    genre: raw.genre || '', track: raw.track || null,
-                                    composer: raw.composer || '',
-                                    duration: raw.duration || 0,
-                                    durationFormat: raw.durationFormat || '00:00',
-                                    playUrl: raw.path, songKey: raw.songKey,
-                                    coverUrl: raw.coverUrl || '',
-                                    lyrics: raw.lyrics || [],
-                                    syncedLyrics: raw.syncedLyrics || [],
-                                    lyricsSource: raw.lyricsSource,
-                                    codec: raw._raw?.codec || '',
-                                    bitrate: raw._raw?.bitrate || null,
-                                    sampleRate: raw._raw?.sampleRate || null,
-                                    channels: raw._raw?.numberOfChannels || null,
-                                    mtime: raw.mtime || 0,
-                                }
-                            } catch { return null }
-                        }))
-                        results.push(...parsed.filter(Boolean))
-                    }
-                } else {
-                    // 旧格式：全量解析
-                    for (let i = 0; i < p.length; i += CONCURRENCY) {
+                for (let i = 0; i < p.length; i += CONCURRENCY) {
                     const batch = p.slice(i, i + CONCURRENCY)
                     const parsed = await Promise.all(batch.map(async (fp) => {
                         try {
                             const raw = await api_?.parseAudio?.(fp)
                             if (!raw) return null
-                            // 统一字段名：preload 返回 title/singer，rest 需要 name/singer
                             return {
                                 path: raw.path,
                                 name: raw.title,
@@ -143,7 +69,6 @@ export const useLocalMusicStore = defineStore('localMusic', {
                     }))
                     results.push(...parsed.filter(Boolean))
                 }
-                } // end else (旧格式)
                 console.log(`[localMusic] 成功解析 ${results.length} 个文件`)
                 this.songList = results
                 this.loaded = true
@@ -204,32 +129,7 @@ export const useLocalMusicStore = defineStore('localMusic', {
         },
 
         async _saveCurrentPaths() {
-            // 保存完整元数据（含 mtime），下次启动可跳过重新解析
-            const data = this.songList.map(s => ({
-                path: s.path,
-                title: s.name || s.title || '',
-                singer: s.singer || '未知歌手',
-                album: s.album || '',
-                year: s.year || null,
-                genre: s.genre || '',
-                track: s.track || null,
-                composer: s.composer || '',
-                duration: s.duration || 0,
-                durationFormat: s.durationFormat || '00:00',
-                songKey: s.songKey || '',
-                coverUrl: s.coverUrl || '',
-                lyrics: s.lyrics || [],
-                syncedLyrics: s.syncedLyrics || [],
-                lyricsSource: s.lyricsSource || null,
-                mtime: s.mtime || 0,
-                _raw: {
-                    codec: s.codec || '',
-                    bitrate: s.bitrate || null,
-                    sampleRate: s.sampleRate || null,
-                    numberOfChannels: s.channels || null,
-                }
-            }))
-            await this._savePaths(data)
+            await this._savePaths(this.songList.map(s => s.path))
         },
 
         // === 歌曲操作 ===
