@@ -1,7 +1,7 @@
 {
   "name": "rhizome",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.0.5",
   "productName": "Rhizome",
   "description": "Rhizome - 简约的本地音乐播放器 | 支持无损音频、桌面歌词、频谱可视化",
   "author": "AutumnDew",
@@ -30,7 +30,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.5",
     "concurrently": "^9.2.1",
-    "electron": "^41.1.0",
+    "electron": "^41.0.5",
     "electron-builder": "^24.13.3",
     "terser": "^5.46.1",
     "unplugin-auto-import": "^21.0.0",

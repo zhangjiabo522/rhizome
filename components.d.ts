@@ -15,7 +15,6 @@ declare module 'vue' {
     DesktopLyrics: typeof import('./src/components/lyrics/DesktopLyrics.vue')['default']
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     GlobalPlayer: typeof import('./src/components/player/GlobalPlayer.vue')['default']
-    InteractionBar: typeof import('./src/components/common/InteractionBar.vue')['default']
     PlaybackControls: typeof import('./src/components/player/PlaybackControls.vue')['default']
     ProgressBar: typeof import('./src/components/player/ProgressBar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
