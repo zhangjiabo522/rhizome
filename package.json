@@ -10,10 +10,15 @@
     "dev": "vite --no-open",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:9000 && npm run electron\"",
-    "clean": "powershell -Command \"Remove-Item -Recurse -Force dist, dist_electron, node_modules/.vite -ErrorAction SilentlyContinue\"",
-    "clean:app": "powershell -Command \"Remove-Item -Recurse -Force $env:APPDATA\\Rhizome -ErrorAction SilentlyContinue\"",
+    "clean": "rimraf dist dist_electron node_modules/.vite",
+    "clean:app": "rimraf ~/.config/Rhizome",
     "clean:all": "npm run clean && npm run clean:app",
     "build": "vite build && electron-builder",
+    "build:linux": "vite build && electron-builder --linux deb",
+    "build:linux:amd64": "cross-env RHIZOME_ARCH=amd64 npm run build:linux",
+    "build:linux:arm64": "cross-env RHIZOME_ARCH=arm64 npm run build:linux",
+    "build:linux:armv7l": "cross-env RHIZOME_ARCH=armv7l npm run build:linux",
+    "build:linux:all": "node scripts/build-linux-all.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -21,27 +26,29 @@
     "element-plus": "^2.13.6",
     "flac-metadata": "^0.1.1",
     "jsmediatags": "^3.9.7",
-    "music-metadata": "^11.12.3",
+    "music-metadata": "^7.14.0",
     "music-metadata-browser": "^2.5.1",
     "pinia": "^3.0.4",
     "vue": "^3.5.30",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.5",
+    "@vitejs/plugin-vue": "^5.2.1",
     "concurrently": "^9.2.1",
-    "electron": "^41.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
     "electron-builder": "^24.13.3",
+    "rimraf": "^5.0.10",
     "terser": "^5.46.1",
-    "unplugin-auto-import": "^21.0.0",
-    "unplugin-vue-components": "^32.0.0",
-    "vite": "^8.0.1",
+    "unplugin-auto-import": "^0.18.6",
+    "unplugin-vue-components": "^0.27.5",
+    "vite": "^5.4.10",
     "wait-on": "^9.0.4"
   },
   "build": {
     "appId": "com.rhizome.music.player",
     "productName": "Rhizome",
-    "copyright": "Copyright 漏 2026 AutumnDew",
+    "copyright": "Copyright © 2026 AutumnDew",
     "directories": {
       "output": "dist_electron"
     },
@@ -56,11 +63,55 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Rhizome 音乐播放器"
     },
+  "linux": {
+    "icon": "build/icons",
+    "target": [
+      "deb"
+    ],
+    "maintainer": "AutumnDew <autumndew@rhizome.local>",
+    "vendor": "AutumnDew",
+    "category": "AudioVideo;Audio;Player;Music",
+      "desktop": {
+        "Name": "Rhizome",
+        "Comment": "简约的本地音乐播放器",
+        "Categories": "AudioVideo;Audio;Player;Music;",
+        "MimeType": "audio/mp3;audio/flac;audio/wav;audio/ogg;audio/m4a;audio/x-aac;audio/opus;audio/x-ms-wma;audio/aiff;audio/x-aiff;",
+        "StartupNotify": "true",
+        "StartupWMClass": "Rhizome"
+      },
+      "executableName": "rhizome",
+      "synopsis": "简约的本地音乐播放器",
+      "description": "Rhizome 是一款使用 Vue 3 + Electron 构建的简约本地音乐播放器，支持 MP3 / FLAC / WAV 等无损与有损格式、桌面歌词、频谱可视化、播放统计与定时报告等功能。"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "priority": "optional",
+      "fpm": [
+        "--deb-no-default-config-files"
+      ]
+    },
     "files": [
       "electron/**/*",
       "dist/**/*"
     ],
     "asar": true,
-    "compression": "maximum"
+    "asarUnpack": [
+      "node_modules/music-metadata/**",
+      "node_modules/music-metadata-browser/**",
+      "node_modules/flac-metadata/**",
+      "node_modules/token-types/**"
+    ],
+    "compression": "maximum",
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   }
 }
