@@ -42,7 +42,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGlobalTheme } from '@/composables/useGlobalTheme'
 import SettingsModal from '@/components/common/SettingsModal.vue'
@@ -101,6 +101,8 @@ const switchSubFunc = (key) => {
 }
 
 onMounted(updateActiveFromRoute)
+
+watch(() => route.path, updateActiveFromRoute)
 </script>
 
 <style scoped>
