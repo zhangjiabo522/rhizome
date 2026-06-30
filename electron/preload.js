@@ -186,6 +186,7 @@ contextBridge.exposeInMainWorld("electron", {
     onMediaPrev: function(cb) { ipcRenderer.on('media-prev', cb) },
     onMediaVolUp: function(cb) { ipcRenderer.on('media-vol-up', cb) },
     onMediaVolDown: function(cb) { ipcRenderer.on('media-vol-down', cb) },
+    onToggleDesktopLyrics: function(cb) { ipcRenderer.on('toggle-desktop-lyrics', cb) },
     onToggleWindow: function(cb) { ipcRenderer.on('toggle-window', cb) },
     onWindowMaximized: function(cb) { ipcRenderer.on("window-maximized", (_, state) => cb(state)) },
     clearAllData: function() { return ipcRenderer.invoke("clear-all-data") },

@@ -1,6 +1,6 @@
 <template>
   <div class="song-detail" :class="[themeClass]">
-    <div class="detail-container" :class="{ entered }">
+    <div class="detail-container" :class="{ entered, switching }">
       <div class="detail-header">
         <div class="song-info">
           <h1 class="song-title">{{ currentSong.name }}</h1>
@@ -81,8 +81,9 @@
         </div>
 
         <div class="lyrics-section">
-          <div class="lyrics-wrapper" ref="lyricsBox">
-            <div class="lyrics-container">
+          <div class="lyrics-frame" :style="{ '--border-progress': borderProgress }">
+            <div class="lyrics-wrapper" ref="lyricsBox">
+              <div class="lyrics-container">
               <p
                   v-for="(line, idx) in lyrics"
                   :key="idx"
@@ -94,6 +95,7 @@
               </p>
               <p v-if="lyrics.length === 0" class="empty-lyrics">暂无歌词</p>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -117,6 +119,7 @@ const currentLine = ref(0)
 const lyricsBox = ref(null)
 const statsRefreshKey = ref(0)
 const entered = ref(false)
+const switching = ref(false)
 
 onMounted(() => {
   if (!playerStore.currentSong) return router.back()
@@ -129,11 +132,14 @@ onMounted(() => {
 
 watch(() => playerStore.currentSong, (val) => {
   if (val) {
-    entered.value = false
-    currentSong.value = val
-    parseLyrics()
-    resetLyrics()
-    requestAnimationFrame(() => { entered.value = true })
+    switching.value = true
+    // 先播放覆盖动效，200ms 后再更新数据+展开
+    setTimeout(() => {
+      currentSong.value = val
+      parseLyrics()
+      resetLyrics()
+      switching.value = false
+    }, 200)
   }
 }, { deep: true })
 
@@ -185,6 +191,11 @@ function resetLyrics() {
 const progress = computed(() => {
   if (!playerStore.duration) return 0
   return (playerStore.currentTime / playerStore.duration) * 100
+})
+
+const borderProgress = computed(() => {
+  if (!playerStore.duration) return 0
+  return Math.min(1, playerStore.currentTime / playerStore.duration)
 })
 
 const lyricProgress = ref(0)
@@ -448,14 +459,28 @@ const goBack = () => router.back()
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding-bottom: 16px;
-  border-bottom: 2px solid var(--border);
+  padding-bottom: 12px;
+  border-left: 2px solid transparent;
+  padding-left: 12px;
   margin-bottom: 20px;
+  overflow: hidden;
+  position: relative;
   opacity: 0;
   transform: translateY(-12px);
   transition: opacity 0.2s cubic-bezier(0.2, 0, 0.2, 1) 0.06s,
               transform 0.2s cubic-bezier(0.2, 0, 0.2, 1) 0.06s;
 }
+/* 竖线动效 */
+.detail-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 2px; height: 100%;
+  background: var(--border);
+  transform: scaleY(0);
+  transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1) 0.04s;
+}
+.entered .detail-header::before { transform: scaleY(1); }
 .entered .detail-header {
   opacity: 1;
   transform: translateY(0);
@@ -466,6 +491,28 @@ const goBack = () => router.back()
 }
 .entered .detail-header .song-title {
   letter-spacing: 0;
+}
+
+/* 切歌动效：从竖线向右拓展色条覆盖，再退回 */
+.detail-header {
+  position: relative;
+}
+.detail-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--border);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.16s cubic-bezier(0.5, 0, 0.3, 1);
+  z-index: 2;
+  pointer-events: none;
+}
+.switching .detail-header::after {
+  transform: scaleX(1);
 }
 
 .song-info {
@@ -534,12 +581,17 @@ const goBack = () => router.back()
   cursor: pointer;
   opacity: 0;
   transform: translateX(-40px);
+  clip-path: inset(0 0 0 0);
   transition: opacity 0.22s cubic-bezier(0.2, 0, 0.2, 1),
-              transform 0.22s cubic-bezier(0.2, 0, 0.2, 1);
+              transform 0.22s cubic-bezier(0.2, 0, 0.2, 1),
+              clip-path 0.2s cubic-bezier(0.25, 0, 0, 1);
 }
 .entered .album-cover {
   opacity: 1;
   transform: translateX(0);
+}
+.switching .album-cover {
+  clip-path: inset(50% 50% 50% 50%);
 }
 
 .album-cover:hover {
@@ -649,6 +701,35 @@ const goBack = () => router.back()
   overflow: hidden;
 }
 
+/* 切歌进度条脉冲 */
+.progress-track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.switching .progress-track::after {
+  animation: sd-progress-pulse 0.35s ease-out;
+}
+@keyframes sd-progress-pulse {
+  0% { opacity: 0; }
+  30% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+@keyframes sd-info-blink {
+  0% { opacity: 1; }
+  12% { opacity: 0.2; }
+  25% { opacity: 1; }
+  40% { opacity: 0.2; }
+  55% { opacity: 1; }
+  70% { opacity: 0.2; }
+  85% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
 .progress-fill {
   position: absolute;
   left: 0;
@@ -709,6 +790,9 @@ const goBack = () => router.back()
   opacity: 0;
   transition: opacity 0.12s ease;
 }
+.switching .song-meta span {
+  animation: sd-info-blink 0.36s ease-out;
+}
 .entered .song-meta span {
   opacity: 1;
 }
@@ -739,6 +823,9 @@ const goBack = () => router.back()
   transition: opacity 0.18s ease 0.32s,
               transform 0.18s cubic-bezier(0.2, 0, 0.2, 1) 0.32s;
 }
+.switching .song-stats {
+  animation: sd-info-blink 0.4s ease-out;
+}
 .entered .song-stats {
   opacity: 1;
   transform: translateX(0);
@@ -765,22 +852,98 @@ const goBack = () => router.back()
   opacity: 1;
 }
 
-.lyrics-wrapper {
+/* 外层固定四角边框 */
+.lyrics-frame {
   height: calc(100vh - 260px);
   min-height: 200px;
-  border: 2px solid var(--border);
+  position: relative;
+  border: 2px solid transparent;
+  opacity: 0;
+  transform: translateX(-30px);
+  transition: opacity 0.22s cubic-bezier(0.2, 0, 0.2, 1) 0.3s,
+              transform 0.22s cubic-bezier(0.2, 0, 0.2, 1) 0.3s;
+}
+.entered .lyrics-frame {
+  opacity: 1;
+  transform: translateX(0);
+}
+/* 切歌时透明闪烁 */
+.switching .lyrics-frame {
+  animation: lyrics-blink 0.4s ease-out;
+}
+@keyframes lyrics-blink {
+  0% { opacity: 1; }
+  12% { opacity: 0.08; }
+  25% { opacity: 1; }
+  40% { opacity: 0.08; }
+  55% { opacity: 1; }
+  70% { opacity: 0.08; }
+  85% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+/* 播放进度边框：每条边从中点向两端生长 */
+.lyrics-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  --p: var(--border-progress, 0);
+  background:
+    /* top */
+    linear-gradient(to right,
+      transparent calc((1 - var(--p)) * 50%),
+      var(--border) 0,
+      var(--border) calc((1 + var(--p)) * 50%),
+      transparent 0
+    ) top / 100% 2px no-repeat,
+    /* bottom */
+    linear-gradient(to right,
+      transparent calc((1 - var(--p)) * 50%),
+      var(--border) 0,
+      var(--border) calc((1 + var(--p)) * 50%),
+      transparent 0
+    ) bottom / 100% 2px no-repeat,
+    /* left */
+    linear-gradient(to bottom,
+      transparent calc((1 - var(--p)) * 50%),
+      var(--border) 0,
+      var(--border) calc((1 + var(--p)) * 50%),
+      transparent 0
+    ) left / 2px 100% no-repeat,
+    /* right */
+    linear-gradient(to bottom,
+      transparent calc((1 - var(--p)) * 50%),
+      var(--border) 0,
+      var(--border) calc((1 + var(--p)) * 50%),
+      transparent 0
+    ) right / 2px 100% no-repeat;
+}
+.lyrics-frame::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, var(--border) 18px, transparent 0) left top / 100% 2px no-repeat,
+    linear-gradient(to bottom, var(--border) 18px, transparent 0) left top / 2px 100% no-repeat,
+    linear-gradient(to left, var(--border) 18px, transparent 0) right top / 100% 2px no-repeat,
+    linear-gradient(to bottom, var(--border) 18px, transparent 0) right top / 2px 100% no-repeat,
+    linear-gradient(to right, var(--border) 18px, transparent 0) left bottom / 100% 2px no-repeat,
+    linear-gradient(to top, var(--border) 18px, transparent 0) left bottom / 2px 100% no-repeat,
+    linear-gradient(to left, var(--border) 18px, transparent 0) right bottom / 100% 2px no-repeat,
+    linear-gradient(to top, var(--border) 18px, transparent 0) right bottom / 2px 100% no-repeat;
+}
+
+/* 内层滚动 */
+.lyrics-wrapper {
+  height: 100%;
   overflow-y: auto;
   scroll-behavior: smooth;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  position: relative;
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path 0.28s cubic-bezier(0.25, 0, 0, 1) 0.3s;
 }
-.entered .lyrics-wrapper {
-  clip-path: inset(0 0 0 0);
-}
-
 .lyrics-wrapper::-webkit-scrollbar {
   display: none;
 }

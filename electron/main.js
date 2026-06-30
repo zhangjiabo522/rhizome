@@ -618,6 +618,7 @@ app.whenReady().then(() => {
         { combo: { code: 'ArrowUp', ctrl: true, shift: false, alt: false }, event: 'media-vol-up' },
         { combo: { code: 'ArrowDown', ctrl: true, shift: false, alt: false }, event: 'media-vol-down' },
         { combo: { code: 'Backslash', ctrl: true, shift: false, alt: false }, event: 'toggle-window' },
+        { combo: { code: 'Quote', ctrl: true, shift: false, alt: false }, event: 'toggle-desktop-lyrics' },
     ]
     for (const s of initialShortcuts) {
         try {

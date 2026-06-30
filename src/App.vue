@@ -8,6 +8,7 @@
 import { useLocalMusicStore } from '@/stores/localMusicStore'
 import { ref, onMounted } from "vue";
 import { checkScheduledReports, generateReportBlob, getReportSavePath } from '@/composables/useReportGenerator'
+import { checkAndGenerateWeekly } from '@/composables/useWeeklyPlaylists'
 
 const appReady = ref(false)
 
@@ -40,6 +41,9 @@ onMounted(async () => {
   const localStore = useLocalMusicStore()
   await localStore.migrateIfNeeded()
   await localStore.initFromStorage()
+
+  // 周报歌单（本周最爱 + 每周发现）
+  checkAndGenerateWeekly(localStore.songList)
 
   // 定时报告（周报/月报/年报）—— 异步后台生成，不阻塞 UI
   generateScheduledReports(localStore)

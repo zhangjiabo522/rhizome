@@ -1,12 +1,12 @@
 <!-- src/components/player/GlobalPlayer.vue -->
 <template>
-  <div class="rc-global-player" v-if="currentSong">
+  <div class="rc-global-player" v-if="currentSong" :class="{ switching }">
     <!-- 左侧：歌曲信息 -->
     <div class="player-left">
       <div class="album-thumb" @click="onGoToDetail">
         <img
-            v-if="currentSong.coverUrl"
-            :src="currentSong.coverUrl"
+            v-if="displaySong.coverUrl"
+            :src="displaySong.coverUrl"
             alt="封面"
             style="width:100%;height:100%;object-fit:cover;"
         />
@@ -16,8 +16,8 @@
         </svg>
       </div>
       <div class="player-info">
-        <div class="song-name">{{ currentSong.name }}</div>
-        <div class="song-artist">{{ currentSong.singer }}</div>
+        <div class="song-name">{{ displaySong.name }}</div>
+        <div class="song-artist">{{ displaySong.singer }}</div>
       </div>
     </div>
 
@@ -69,15 +69,18 @@
           <path d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
       </button>
+
+      <FavoriteButton class="gp-fav-btn" :song="displaySong" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import PlaybackControls from './PlaybackControls.vue'
 import ProgressBar from './ProgressBar.vue'
 import VolumeControl from './VolumeControl.vue'
+import FavoriteButton from '@/components/common/FavoriteButton.vue'
 
 const props = defineProps({
   currentSong: {
@@ -157,6 +160,20 @@ const lyricTooltip = computed(() => {
   if (props.desktopLyricsLocked) return '桌面歌词 (已锁定)'
   if (props.desktopLyricsVisible) return '隐藏桌面歌词'
   return '显示桌面歌词'
+})
+
+// ========== 切歌动效 ==========
+const switching = ref(false)
+const displaySong = ref({ ...props.currentSong })
+
+watch(() => props.currentSong, (song) => {
+  if (song) {
+    switching.value = true
+    setTimeout(() => {
+      displaySong.value = song
+      switching.value = false
+    }, 180)
+  }
 })
 </script>
 
@@ -304,5 +321,65 @@ const lyricTooltip = computed(() => {
 .desktop-lyric-btn .rc-tooltip {
   top: auto;
   bottom: calc(100% + 6px);
+}
+
+/* 收藏按钮在播放栏中的样式 */
+.gp-fav-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 0;
+}
+
+/* ========== 切歌动效 ========== */
+
+/* 封面：四角收拢再展开 */
+.album-thumb {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 0.18s cubic-bezier(0.25, 0, 0, 1);
+}
+.switching .album-thumb {
+  clip-path: inset(50% 50% 50% 50%);
+}
+
+/* 歌名/歌手：左侧色条擦除 */
+.player-info {
+  position: relative;
+  overflow: hidden;
+}
+.player-info::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--border-color);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.18s cubic-bezier(0.5, 0, 0.3, 1);
+  z-index: 2;
+  pointer-events: none;
+}
+.switching .player-info::after {
+  transform: scaleX(1);
+}
+
+/* 进度条脉冲 */
+.rc-progress-track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--border-color);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.switching .rc-progress-track::after {
+  animation: gp-progress-pulse 0.36s ease-out;
+}
+@keyframes gp-progress-pulse {
+  0% { opacity: 0; }
+  30% { opacity: 0.5; }
+  100% { opacity: 0; }
 }
 </style>

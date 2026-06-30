@@ -64,7 +64,7 @@
     </div>
 
     <!-- 文件夹横向滚动列表 -->
-    <div class="folder-strip" v-if="!musicStore.loading && musicStore.folders.length">
+    <div class="folder-strip" ref="folderStripRef" v-if="!musicStore.loading && musicStore.folders.length">
       <button
           class="folder-chip"
           :class="{ active: activeFolder === null }"
@@ -99,6 +99,7 @@
           :key="item.path"
           :class="{
             selected: multiMode && selectedSet.has(item.path),
+            playing: isCurrentSong(item),
             'sort-mode': sortMode,
             'dragging': sortMode && dragFromIdx === idx,
             'drag-over': sortMode && dragOverIdx === idx
@@ -112,7 +113,18 @@
           @drop="sortMode ? onDrop(idx) : null"
           @dragend="sortMode ? onDragEnd() : null"
       >
-        <div class="song-index">{{ idx + 1 }}</div>
+        <div class="song-index" v-if="sortMode">
+          <input
+            type="text"
+            class="sort-order-input"
+            :value="sortOrderMap[item.path] ?? ''"
+            :placeholder="idx + 1"
+            @input="onSortOrderInput(item.path, $event)"
+            @click.stop
+            @dblclick.stop
+          />
+        </div>
+        <div class="song-index" v-else>{{ idx + 1 }}</div>
         <div class="song-cover" v-if="item.coverUrl">
           <img :src="item.coverUrl" alt="cover" />
         </div>
@@ -145,6 +157,7 @@
               <path d="M12 5v14M5 12h14"/>
             </svg>
           </button>
+          <FavoriteButton :song="item" />
         </div>
       </div>
 
@@ -155,6 +168,19 @@
         </svg>
         <p>暂无本地音乐，点击添加音乐开始导入</p>
       </div>
+    </div>
+
+    <!-- 底部浮动按钮组 -->
+    <div class="float-actions" v-if="multiMode || sortMode || playerStore.currentSong">
+      <button v-if="multiMode" class="float-btn" @click="cancelMulti" title="取消多选">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <button v-if="sortMode" class="float-btn" @click="toggleSortMode" title="完成排序">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+      </button>
+      <button class="float-btn" @click="scrollToCurrent" title="定位到当前播放歌曲">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+      </button>
     </div>
   </div>
 
@@ -176,13 +202,17 @@ import { computed, ref, onMounted } from "vue";
 import { useGlobalTheme } from "@/composables/useGlobalTheme";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useLocalMusicStore } from "@/stores/localMusicStore";
+import { useCurrentSongHighlight } from "@/composables/useCurrentSongHighlight";
+import FavoriteButton from "@/components/common/FavoriteButton.vue";
 
 const { themeClass } = useGlobalTheme();
 const playerStore = usePlayerStore();
 const musicStore = useLocalMusicStore();
+const { isCurrentSong } = useCurrentSongHighlight();
 
 const activeFolder = ref(null);
 const entered = ref(false);
+const folderStripRef = ref(null);
 const searchQuery = ref('');
 const multiMode = ref(false);
 const selectedSet = ref(new Set());
@@ -190,15 +220,89 @@ const sortMode = ref(false);
 // 拖拽状态
 const dragFromIdx = ref(-1);
 const dragOverIdx = ref(-1);
+// 数字排序映射：用户只输入要移动到的目标位置
+const sortOrderMap = ref({});
 
 const toggleSortMode = () => {
-  sortMode.value = !sortMode.value
   if (sortMode.value) {
+    applySortOrder()
+    sortMode.value = false
+    dragFromIdx.value = -1
+    dragOverIdx.value = -1
+    sortOrderMap.value = {}
+  } else {
+    sortMode.value = true
     multiMode.value = false
     selectedSet.value.clear()
     dragFromIdx.value = -1
     dragOverIdx.value = -1
+    sortOrderMap.value = {}
   }
+}
+
+const onSortOrderInput = (path, e) => {
+  const raw = e.target.value.trim()
+  if (raw === '') {
+    delete sortOrderMap.value[path]
+    return
+  }
+  const num = parseInt(raw, 10)
+  if (!isNaN(num) && num > 0 && String(num) === raw) {
+    sortOrderMap.value[path] = num
+  }
+  e.target.value = sortOrderMap.value[path] ?? ''
+}
+
+const applySortOrder = () => {
+  const map = sortOrderMap.value
+  const entries = Object.entries(map)
+  if (!entries.length) return
+
+  const list = [...musicStore.songList]
+  const toMove = []
+  const toKeep = []
+
+  for (const song of list) {
+    const target = map[song.path]
+    if (target !== undefined && target !== null && target !== '') {
+      toMove.push({ song, targetIdx: Number(target) - 1 })
+    } else {
+      toKeep.push(song)
+    }
+  }
+
+  toMove.sort((a, b) => a.targetIdx - b.targetIdx)
+
+  const total = list.length
+  const newList = new Array(total).fill(null)
+  const usedPositions = new Set()
+
+  for (const item of toMove) {
+    let pos = item.targetIdx
+    if (pos < 0) pos = 0
+    if (pos >= total) pos = total - 1
+    while (usedPositions.has(pos) && pos >= 0) pos--
+    if (pos < 0) {
+      pos = item.targetIdx
+      while (usedPositions.has(pos) && pos < total) pos++
+    }
+    if (pos >= 0 && pos < total && !usedPositions.has(pos)) {
+      newList[pos] = item.song
+      usedPositions.add(pos)
+    }
+  }
+
+  let ki = 0
+  for (let i = 0; i < total; i++) {
+    if (!newList[i]) {
+      if (ki < toKeep.length) {
+        newList[i] = toKeep[ki++]
+      }
+    }
+  }
+
+  musicStore.songList = newList.filter(Boolean)
+  musicStore._saveCurrentPaths()
 }
 
 const toggleMultiMode = () => {
@@ -322,6 +426,18 @@ const batchAddToPlaylist = () => {
   try { playlistList.value = JSON.parse(localStorage.getItem('local_playlists') || '[]') } catch { playlistList.value = [] }
   showPlaylistSelect.value = true;
 };
+
+const cancelMulti = () => {
+  multiMode.value = false
+  selectedSet.value.clear()
+}
+
+const scrollToCurrent = () => {
+  const s = playerStore.currentSong
+  if (!s) return
+  const el = document.querySelector('.song-item.playing')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 
 const filteredSongs = computed(() => {
   let list = musicStore.songList
@@ -448,6 +564,14 @@ onMounted(async () => {
   if (!musicStore.loaded && !musicStore.loading) {
     await musicStore.initFromStorage()
   }
+  // 文件夹 Strip 鼠标滚轮水平滚动
+  const strip = folderStripRef.value
+  if (strip) {
+    strip.addEventListener('wheel', (e) => {
+      e.preventDefault()
+      strip.scrollLeft += e.deltaY
+    }, { passive: false })
+  }
   // 等 splash 淡出后再播入场动效
   const triggerEnter = () => requestAnimationFrame(() => { entered.value = true })
   const splash = document.getElementById('rhizome-splash')
@@ -476,7 +600,7 @@ onMounted(async () => {
 
 .local-header {
   padding: 16px;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid transparent;
 }
 
 .local-header h2 {
@@ -493,7 +617,7 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   padding: 12px;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid transparent;
   align-items: center;
 }
 
@@ -579,17 +703,13 @@ onMounted(async () => {
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
-  scrollbar-width: thin;
-  border-bottom: 1px solid var(--border-color);
+  scrollbar-width: none;
+  border-bottom: 1px solid transparent;
   background: var(--bg-secondary);
 }
 
 .folder-strip::-webkit-scrollbar {
-  height: 4px;
-}
-
-.folder-strip::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  display: none;
 }
 
 .folder-chip {
@@ -694,6 +814,28 @@ onMounted(async () => {
   font-size: 13px;
   opacity: .8;
   flex-shrink: 0;
+}
+
+.sort-order-input {
+  width: 30px;
+  height: 22px;
+  text-align: center;
+  font-size: 12px;
+  font-family: monospace;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  padding: 0 2px;
+  margin-left: -3px;
+}
+.sort-order-input::placeholder {
+  color: var(--text-primary);
+  opacity: 0.3;
+}
+.sort-order-input:focus {
+  border-color: var(--btn-hover-text);
+  background: var(--bg-primary);
 }
 
 .song-cover {
@@ -805,6 +947,64 @@ onMounted(async () => {
   border-color: var(--btn-hover-bg);
 }
 
+/* 当前播放歌曲高亮 */
+.song-item.playing {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+.song-item.playing .song-index,
+.song-item.playing .song-name,
+.song-item.playing .song-artist,
+.song-item.playing .song-album,
+.song-item.playing .song-duration {
+  color: inherit;
+}
+.song-item.playing .song-cover {
+  background: var(--btn-hover-text);
+  border-color: var(--btn-hover-text);
+  color: var(--btn-hover-bg);
+}
+.song-item.playing .song-btn {
+  background: var(--btn-hover-text);
+  color: var(--btn-hover-bg);
+  border-color: var(--btn-hover-bg);
+}
+
+/* 底部浮动按钮组 */
+.float-actions {
+  position: fixed;
+  bottom: 84px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 10;
+}
+.float-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.float-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+}
+.float-btn:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+
 .song-actions {
   display: flex;
   gap: 4px;
@@ -881,9 +1081,18 @@ onMounted(async () => {
   opacity: 0; transform: scaleX(0);
   transition: opacity 0.12s ease, transform 0.13s cubic-bezier(0.25, 0, 0, 1);
 }
-.local-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.1s; }
-.local-toolbar .rc-global-btn:nth-child(2) { transition-delay: 0.16s; }
+.local-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.08s; }
+.local-toolbar .rc-global-btn:nth-child(2) { transition-delay: 0.13s; }
+.local-toolbar .rc-global-btn:nth-child(3) { transition-delay: 0.18s; }
+.local-toolbar .rc-global-btn:nth-child(4) { transition-delay: 0.23s; }
 .entered .local-toolbar .rc-global-btn { opacity: 1; transform: scaleX(1); }
+
+/* 搜索框入场 */
+.search-box {
+  opacity: 0; transform: translateX(8px);
+  transition: opacity 0.15s ease 0.24s, transform 0.15s ease 0.24s;
+}
+.entered .search-box { opacity: 1; transform: translateX(0); }
 
 .folder-strip {
   opacity: 0; transform: translateY(-6px);
@@ -897,29 +1106,66 @@ onMounted(async () => {
               transform 0.15s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .entered .song-item { opacity: 1; transform: translateX(0); }
-.song-item:nth-child(1) { transition-delay: 0.25s; }
-.song-item:nth-child(2) { transition-delay: 0.278s; }
-.song-item:nth-child(3) { transition-delay: 0.306s; }
-.song-item:nth-child(4) { transition-delay: 0.334s; }
-.song-item:nth-child(5) { transition-delay: 0.362s; }
-.song-item:nth-child(6) { transition-delay: 0.39s; }
-.song-item:nth-child(7) { transition-delay: 0.418s; }
-.song-item:nth-child(8) { transition-delay: 0.446s; }
-.song-item:nth-child(9) { transition-delay: 0.474s; }
-.song-item:nth-child(10) { transition-delay: 0.502s; }
-.song-item:nth-child(11) { transition-delay: 0.53s; }
-.song-item:nth-child(12) { transition-delay: 0.558s; }
-.song-item:nth-child(13) { transition-delay: 0.586s; }
-.song-item:nth-child(14) { transition-delay: 0.614s; }
-.song-item:nth-child(15) { transition-delay: 0.642s; }
-.song-item:nth-child(16) { transition-delay: 0.67s; }
-.song-item:nth-child(17) { transition-delay: 0.698s; }
-.song-item:nth-child(18) { transition-delay: 0.726s; }
-.song-item:nth-child(19) { transition-delay: 0.754s; }
-.song-item:nth-child(20) { transition-delay: 0.782s; }
-.song-item:nth-child(21) { transition-delay: 0.81s; }
-.song-item:nth-child(22) { transition-delay: 0.838s; }
-.song-item:nth-child(23) { transition-delay: 0.866s; }
-.song-item:nth-child(24) { transition-delay: 0.894s; }
-.song-item:nth-child(25) { transition-delay: 0.922s; }
+.song-item:nth-child(1) { transition-delay: 0.24s; }
+.song-item:nth-child(2) { transition-delay: 0.263s; }
+.song-item:nth-child(3) { transition-delay: 0.286s; }
+.song-item:nth-child(4) { transition-delay: 0.309s; }
+.song-item:nth-child(5) { transition-delay: 0.332s; }
+.song-item:nth-child(6) { transition-delay: 0.355s; }
+.song-item:nth-child(7) { transition-delay: 0.378s; }
+.song-item:nth-child(8) { transition-delay: 0.401s; }
+.song-item:nth-child(9) { transition-delay: 0.424s; }
+.song-item:nth-child(10) { transition-delay: 0.447s; }
+.song-item:nth-child(11) { transition-delay: 0.47s; }
+.song-item:nth-child(12) { transition-delay: 0.493s; }
+.song-item:nth-child(13) { transition-delay: 0.516s; }
+.song-item:nth-child(14) { transition-delay: 0.539s; }
+.song-item:nth-child(15) { transition-delay: 0.562s; }
+.song-item:nth-child(16) { transition-delay: 0.585s; }
+.song-item:nth-child(17) { transition-delay: 0.608s; }
+.song-item:nth-child(18) { transition-delay: 0.631s; }
+.song-item:nth-child(19) { transition-delay: 0.654s; }
+.song-item:nth-child(20) { transition-delay: 0.677s; }
+.song-item:nth-child(21) { transition-delay: 0.7s; }
+.song-item:nth-child(22) { transition-delay: 0.723s; }
+.song-item:nth-child(23) { transition-delay: 0.746s; }
+.song-item:nth-child(24) { transition-delay: 0.769s; }
+.song-item:nth-child(25) { transition-delay: 0.792s; }
+.song-item:nth-child(26) { transition-delay: 0.815s; }
+.song-item:nth-child(27) { transition-delay: 0.838s; }
+.song-item:nth-child(28) { transition-delay: 0.861s; }
+.song-item:nth-child(29) { transition-delay: 0.884s; }
+.song-item:nth-child(30) { transition-delay: 0.907s; }
+.song-item:nth-child(31) { transition-delay: 0.93s; }
+.song-item:nth-child(32) { transition-delay: 0.953s; }
+.song-item:nth-child(33) { transition-delay: 0.976s; }
+.song-item:nth-child(34) { transition-delay: 0.999s; }
+.song-item:nth-child(35) { transition-delay: 1.022s; }
+.song-item:nth-child(36) { transition-delay: 1.045s; }
+.song-item:nth-child(37) { transition-delay: 1.068s; }
+.song-item:nth-child(38) { transition-delay: 1.091s; }
+.song-item:nth-child(39) { transition-delay: 1.114s; }
+.song-item:nth-child(40) { transition-delay: 1.137s; }
+.song-item:nth-child(41) { transition-delay: 1.16s; }
+.song-item:nth-child(42) { transition-delay: 1.183s; }
+.song-item:nth-child(43) { transition-delay: 1.206s; }
+.song-item:nth-child(44) { transition-delay: 1.229s; }
+.song-item:nth-child(45) { transition-delay: 1.252s; }
+.song-item:nth-child(46) { transition-delay: 1.275s; }
+.song-item:nth-child(47) { transition-delay: 1.298s; }
+.song-item:nth-child(48) { transition-delay: 1.321s; }
+.song-item:nth-child(49) { transition-delay: 1.344s; }
+.song-item:nth-child(50) { transition-delay: 1.367s; }
+
+/* 分隔线从中点向两端生长 */
+.local-header, .local-toolbar, .folder-strip { position: relative; }
+.local-header::after, .local-toolbar::after, .folder-strip::after {
+  content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
+  background: var(--border-color); transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1);
+}
+.local-toolbar::after, .folder-strip::after { height: 1px; }
+.entered .local-header::after,
+.entered .local-toolbar::after,
+.entered .folder-strip::after { transform: scaleX(1); }
 </style>

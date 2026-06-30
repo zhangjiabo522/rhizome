@@ -73,7 +73,8 @@
             'sort-mode': sortMode,
             'dragging': sortMode && dragFromIdx === idx,
             'drag-over': sortMode && dragOverIdx === idx,
-            'selected': multiMode && selectedSet.has(item.path)
+            'selected': multiMode && selectedSet.has(item.path),
+            playing: isCurrentSong(item)
           }"
           :draggable="sortMode"
           @click="multiMode ? toggleSelect(item) : null"
@@ -84,7 +85,18 @@
           @drop="sortMode ? onDrop(idx) : null"
           @dragend="sortMode ? onDragEnd() : null"
       >
-        <div class="song-index">{{ idx + 1 }}</div>
+        <div class="song-index" v-if="sortMode">
+          <input
+            type="text"
+            class="sort-order-input"
+            :value="sortOrderMap[item.path] ?? ''"
+            :placeholder="idx + 1"
+            @input="onSortOrderInput(item.path, $event)"
+            @click.stop
+            @dblclick.stop
+          />
+        </div>
+        <div class="song-index" v-else>{{ idx + 1 }}</div>
         <div class="song-cover" v-if="item.coverUrl">
           <img :src="item.coverUrl" alt="cover" />
         </div>
@@ -109,6 +121,7 @@
               <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke-width="2"/>
             </svg>
           </button>
+          <FavoriteButton :song="item" />
         </div>
       </div>
 
@@ -118,6 +131,19 @@
         </svg>
         <p>暂无歌曲，点击添加歌曲</p>
       </div>
+    </div>
+
+    <!-- 底部浮动按钮组 -->
+    <div class="float-actions" v-if="multiMode || sortMode || playerStore.currentSong">
+      <button v-if="multiMode" class="float-btn" @click="cancelMulti" title="取消多选">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <button v-if="sortMode" class="float-btn" @click="toggleSortMode" title="完成排序">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+      </button>
+      <button class="float-btn" @click="scrollToCurrent" title="定位到当前播放歌曲">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+      </button>
     </div>
 
     <!-- 添加歌曲弹窗 -->
@@ -164,6 +190,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useGlobalTheme } from '@/composables/useGlobalTheme'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useLocalMusicStore } from '@/stores/localMusicStore'
+import { useCurrentSongHighlight } from '@/composables/useCurrentSongHighlight'
+import FavoriteButton from '@/components/common/FavoriteButton.vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
@@ -171,6 +199,7 @@ const router = useRouter()
 const { themeClass } = useGlobalTheme()
 const playerStore = usePlayerStore()
 const localMusicStore = useLocalMusicStore()
+const { isCurrentSong } = useCurrentSongHighlight()
 
 const playlistInfo = ref({})
 const realSongList = ref([])
@@ -191,15 +220,88 @@ const availableSongs = computed(() => {
 const sortMode = ref(false)
 const dragFromIdx = ref(-1)
 const dragOverIdx = ref(-1)
+const sortOrderMap = ref({})
 
 const toggleSortMode = () => {
-  sortMode.value = !sortMode.value
   if (sortMode.value) {
+    applySortOrder()
+    sortMode.value = false
+    dragFromIdx.value = -1
+    dragOverIdx.value = -1
+    sortOrderMap.value = {}
+  } else {
+    sortMode.value = true
     multiMode.value = false
     selectedSet.value.clear()
     dragFromIdx.value = -1
     dragOverIdx.value = -1
+    sortOrderMap.value = {}
   }
+}
+
+const onSortOrderInput = (path, e) => {
+  const raw = e.target.value.trim()
+  if (raw === '') {
+    delete sortOrderMap.value[path]
+    return
+  }
+  const num = parseInt(raw, 10)
+  if (!isNaN(num) && num > 0 && String(num) === raw) {
+    sortOrderMap.value[path] = num
+  }
+  e.target.value = sortOrderMap.value[path] ?? ''
+}
+
+const applySortOrder = () => {
+  const map = sortOrderMap.value
+  const entries = Object.entries(map)
+  if (!entries.length) return
+
+  const list = [...realSongList.value]
+  const toMove = []
+  const toKeep = []
+
+  for (const song of list) {
+    const target = map[song.path]
+    if (target !== undefined && target !== null && target !== '') {
+      toMove.push({ song, targetIdx: Number(target) - 1 })
+    } else {
+      toKeep.push(song)
+    }
+  }
+
+  toMove.sort((a, b) => a.targetIdx - b.targetIdx)
+
+  const total = list.length
+  const newList = new Array(total).fill(null)
+  const usedPositions = new Set()
+
+  for (const item of toMove) {
+    let pos = item.targetIdx
+    if (pos < 0) pos = 0
+    if (pos >= total) pos = total - 1
+    while (usedPositions.has(pos) && pos >= 0) pos--
+    if (pos < 0) {
+      pos = item.targetIdx
+      while (usedPositions.has(pos) && pos < total) pos++
+    }
+    if (pos >= 0 && pos < total && !usedPositions.has(pos)) {
+      newList[pos] = item.song
+      usedPositions.add(pos)
+    }
+  }
+
+  let ki = 0
+  for (let i = 0; i < total; i++) {
+    if (!newList[i]) {
+      if (ki < toKeep.length) {
+        newList[i] = toKeep[ki++]
+      }
+    }
+  }
+
+  realSongList.value = newList.filter(Boolean)
+  persistSongOrder()
 }
 
 // === 多选模式 ===
@@ -283,6 +385,18 @@ const persistSongOrder = () => {
   const map = JSON.parse(localStorage.getItem('local_playlist_songs') || '{}')
   map[pl.localId] = realSongList.value.map(s => s.path).filter(Boolean)
   localStorage.setItem('local_playlist_songs', JSON.stringify(map))
+}
+
+/* 定位到当前播放歌曲 */
+const scrollToCurrent = () => {
+  const el = document.querySelector('.song-item.playing')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+/* 取消多选 */
+const cancelMulti = () => {
+  multiMode.value = false
+  selectedSet.value.clear()
 }
 
 const formatTime = (sec) => {
@@ -416,7 +530,9 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
 <style scoped>
 .playlist-detail { width: 100%; height: 100%; background: var(--bg-primary); color: var(--text-primary); overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
 .playlist-detail::-webkit-scrollbar { display: none; }
-.detail-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; border-bottom: 2px solid var(--border-color); }
+.detail-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; border-bottom: 2px solid transparent; position: relative; }
+.detail-header::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; background: var(--border-color); transform: scaleX(0); transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1); }
+.entered .detail-header::after { transform: scaleX(1); }
 .detail-header-info { display: flex; gap: 20px; flex: 1; }
 .playlist-cover { width: 100px; height: 100px; border: 2px solid var(--border-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--bg-secondary); }
 .playlist-cover img { width: 100%; height: 100%; object-fit: cover; }
@@ -430,7 +546,9 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
 .back-btn { height: 36px; padding: 0 14px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; transition: all .2s; flex-shrink: 0; }
 .back-btn svg { width: 14px; height: 14px; }
 .back-btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-text); transform: translateY(-1px); }
-.detail-toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 2px solid var(--border-color); }
+.detail-toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 2px solid transparent; }
+.detail-toolbar::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; background: var(--border-color); transform: scaleX(0); transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1); }
+.entered .detail-toolbar::after { transform: scaleX(1); }
 .rc-global-btn { height: 36px; padding: 0 14px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; transition: all .2s; }
 .rc-global-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; }
 .rc-global-btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-text); transform: translateY(-1px); }
@@ -464,12 +582,38 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
 .song-item.selected .song-duration {
   color: inherit;
 }
+/* 当前播放歌曲高亮 */
+.song-item.playing {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+.song-item.playing .song-index,
+.song-item.playing .song-name,
+.song-item.playing .song-artist,
+.song-item.playing .song-duration {
+  color: inherit;
+}
 .song-item:hover .song-index,
 .song-item:hover .song-name,
 .song-item:hover .song-artist,
 .song-item:hover .song-duration { color: inherit; 
 }
 .song-index { width: 30px; text-align: center; font-size: 13px; opacity: .8; flex-shrink: 0; }
+.sort-order-input {
+  width: 30px; height: 22px; text-align: center;
+  font-size: 12px; font-family: monospace;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary); color: var(--text-primary);
+  outline: none; padding: 0 2px;
+  margin-left: -3px;
+}
+.sort-order-input::placeholder {
+  color: var(--text-primary); opacity: 0.3;
+}
+.sort-order-input:focus {
+  border-color: var(--btn-hover-text);
+  background: var(--bg-primary);
+}
 .song-cover { width: 36px; height: 36px; border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: 10px; background: var(--bg-secondary); overflow: hidden; }
 .song-cover img { width: 100%; height: 100%; object-fit: cover; }
 .song-cover svg { width: 18px; height: 18px; stroke: currentColor; opacity: .5; }
@@ -509,11 +653,46 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
 .folder-add-btn { width: 100%; height: 36px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 13px; transition: all .2s; margin-top: 4px; }
 .folder-add-btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-text); }
 
+/* 底部浮动按钮组 */
+.float-actions {
+  position: fixed;
+  bottom: 84px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 10;
+}
+.float-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.float-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+}
+.float-btn:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+
 /* === 精密组装入场 === */
 .playlist-cover {
   opacity: 0; transform: translateX(-40px);
-  transition: opacity 0.22s cubic-bezier(0.2, 0, 0.2, 1),
-              transform 0.22s cubic-bezier(0.2, 0, 0.2, 1);
+  transition: opacity 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+              transform 0.18s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .entered .playlist-cover { opacity: 1; transform: translateX(0); }
 
@@ -536,7 +715,7 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
 .back-btn {
   opacity: 0; transform: scaleX(0);
   transition: opacity 0.12s ease, transform 0.13s cubic-bezier(0.25, 0, 0, 1);
-  transition-delay: 0.14s;
+  transition-delay: 0.12s;
 }
 .entered .back-btn { opacity: 1; transform: scaleX(1); }
 
@@ -544,8 +723,10 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
   opacity: 0; transform: scaleX(0);
   transition: opacity 0.12s ease, transform 0.13s cubic-bezier(0.25, 0, 0, 1);
 }
-.detail-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.18s; }
-.detail-toolbar .rc-global-btn:nth-child(2) { transition-delay: 0.24s; }
+.detail-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.08s; }
+.detail-toolbar .rc-global-btn:nth-child(2) { transition-delay: 0.16s; }
+.detail-toolbar .rc-global-btn:nth-child(3) { transition-delay: 0.24s; }
+.detail-toolbar .rc-global-btn:nth-child(4) { transition-delay: 0.32s; }
 .entered .detail-toolbar .rc-global-btn { opacity: 1; transform: scaleX(1); }
 
 .song-item {
@@ -554,29 +735,54 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
               transform 0.15s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .entered .song-item { opacity: 1; transform: translateX(0); }
-.song-item:nth-child(1) { transition-delay: 0.28s; }
-.song-item:nth-child(2) { transition-delay: 0.308s; }
-.song-item:nth-child(3) { transition-delay: 0.336s; }
-.song-item:nth-child(4) { transition-delay: 0.364s; }
-.song-item:nth-child(5) { transition-delay: 0.392s; }
-.song-item:nth-child(6) { transition-delay: 0.42s; }
-.song-item:nth-child(7) { transition-delay: 0.448s; }
-.song-item:nth-child(8) { transition-delay: 0.476s; }
-.song-item:nth-child(9) { transition-delay: 0.504s; }
-.song-item:nth-child(10) { transition-delay: 0.532s; }
-.song-item:nth-child(11) { transition-delay: 0.56s; }
-.song-item:nth-child(12) { transition-delay: 0.588s; }
-.song-item:nth-child(13) { transition-delay: 0.616s; }
-.song-item:nth-child(14) { transition-delay: 0.644s; }
-.song-item:nth-child(15) { transition-delay: 0.672s; }
-.song-item:nth-child(16) { transition-delay: 0.7s; }
-.song-item:nth-child(17) { transition-delay: 0.728s; }
-.song-item:nth-child(18) { transition-delay: 0.756s; }
-.song-item:nth-child(19) { transition-delay: 0.784s; }
-.song-item:nth-child(20) { transition-delay: 0.812s; }
-.song-item:nth-child(21) { transition-delay: 0.84s; }
-.song-item:nth-child(22) { transition-delay: 0.868s; }
-.song-item:nth-child(23) { transition-delay: 0.896s; }
-.song-item:nth-child(24) { transition-delay: 0.924s; }
-.song-item:nth-child(25) { transition-delay: 0.952s; }
+.song-item:nth-child(1) { transition-delay: 0.24s; }
+.song-item:nth-child(2) { transition-delay: 0.263s; }
+.song-item:nth-child(3) { transition-delay: 0.286s; }
+.song-item:nth-child(4) { transition-delay: 0.309s; }
+.song-item:nth-child(5) { transition-delay: 0.332s; }
+.song-item:nth-child(6) { transition-delay: 0.355s; }
+.song-item:nth-child(7) { transition-delay: 0.378s; }
+.song-item:nth-child(8) { transition-delay: 0.401s; }
+.song-item:nth-child(9) { transition-delay: 0.424s; }
+.song-item:nth-child(10) { transition-delay: 0.447s; }
+.song-item:nth-child(11) { transition-delay: 0.47s; }
+.song-item:nth-child(12) { transition-delay: 0.493s; }
+.song-item:nth-child(13) { transition-delay: 0.516s; }
+.song-item:nth-child(14) { transition-delay: 0.539s; }
+.song-item:nth-child(15) { transition-delay: 0.562s; }
+.song-item:nth-child(16) { transition-delay: 0.585s; }
+.song-item:nth-child(17) { transition-delay: 0.608s; }
+.song-item:nth-child(18) { transition-delay: 0.631s; }
+.song-item:nth-child(19) { transition-delay: 0.654s; }
+.song-item:nth-child(20) { transition-delay: 0.677s; }
+.song-item:nth-child(21) { transition-delay: 0.7s; }
+.song-item:nth-child(22) { transition-delay: 0.723s; }
+.song-item:nth-child(23) { transition-delay: 0.746s; }
+.song-item:nth-child(24) { transition-delay: 0.769s; }
+.song-item:nth-child(25) { transition-delay: 0.792s; }
+.song-item:nth-child(26) { transition-delay: 0.815s; }
+.song-item:nth-child(27) { transition-delay: 0.838s; }
+.song-item:nth-child(28) { transition-delay: 0.861s; }
+.song-item:nth-child(29) { transition-delay: 0.884s; }
+.song-item:nth-child(30) { transition-delay: 0.907s; }
+.song-item:nth-child(31) { transition-delay: 0.93s; }
+.song-item:nth-child(32) { transition-delay: 0.953s; }
+.song-item:nth-child(33) { transition-delay: 0.976s; }
+.song-item:nth-child(34) { transition-delay: 0.999s; }
+.song-item:nth-child(35) { transition-delay: 1.022s; }
+.song-item:nth-child(36) { transition-delay: 1.045s; }
+.song-item:nth-child(37) { transition-delay: 1.068s; }
+.song-item:nth-child(38) { transition-delay: 1.091s; }
+.song-item:nth-child(39) { transition-delay: 1.114s; }
+.song-item:nth-child(40) { transition-delay: 1.137s; }
+.song-item:nth-child(41) { transition-delay: 1.16s; }
+.song-item:nth-child(42) { transition-delay: 1.183s; }
+.song-item:nth-child(43) { transition-delay: 1.206s; }
+.song-item:nth-child(44) { transition-delay: 1.229s; }
+.song-item:nth-child(45) { transition-delay: 1.252s; }
+.song-item:nth-child(46) { transition-delay: 1.275s; }
+.song-item:nth-child(47) { transition-delay: 1.298s; }
+.song-item:nth-child(48) { transition-delay: 1.321s; }
+.song-item:nth-child(49) { transition-delay: 1.344s; }
+.song-item:nth-child(50) { transition-delay: 1.367s; }
 </style>

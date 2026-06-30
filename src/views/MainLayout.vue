@@ -261,6 +261,7 @@ useShortcuts({
     volume.value = Math.max(0, volume.value - 0.05)
     playerStore.setAudioVolume(volume.value)
   },
+  toggleDesktopLyrics: () => onToggleDesktopLyrics(),
 })
 
 onMounted(() => {

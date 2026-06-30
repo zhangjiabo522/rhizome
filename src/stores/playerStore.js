@@ -22,6 +22,27 @@ export const usePlayerStore = defineStore('player', () => {
     }
     const modeIcon = ref(modeMap[playMode.value])
 
+    // ========== 伪随机播放（Fisher-Yates shuffle） ==========
+    const shuffleOrder = ref([])
+    let shufflePos = -1
+
+    function regenerateShuffle() {
+        const n = playList.value.length
+        if (n === 0) { shuffleOrder.value = []; shufflePos = -1; return }
+        const arr = Array.from({ length: n }, (_, i) => i)
+        for (let i = n - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        }
+        const curIdx = getCurrentSongIndex()
+        if (curIdx !== -1 && n > 1 && arr[0] === curIdx) {
+            const swapIdx = 1 + Math.floor(Math.random() * (n - 1))
+            ;[arr[0], arr[swapIdx]] = [arr[swapIdx], arr[0]]
+        }
+        shuffleOrder.value = arr
+        shufflePos = 0
+    }
+
     const audio = ref(null)
     const lastRecordPath = ref('')
     const lastCountedSong = ref('')
@@ -205,6 +226,7 @@ export const usePlayerStore = defineStore('player', () => {
 
     const setPlayList = (list) => {
         playList.value = Array.isArray(list) ? [...list] : []
+        if (playMode.value === 'random') regenerateShuffle()
     }
 
     const playSongInList = (song) => {
@@ -236,18 +258,37 @@ export const usePlayerStore = defineStore('player', () => {
     const nextSong = () => {
         const idx = getCurrentSongIndex()
         if (idx === -1) return
-        const next = playMode.value === 'random'
-            ? Math.floor(Math.random() * playList.value.length)
-            : (idx + 1) % playList.value.length
+        let next
+        if (playMode.value === 'random') {
+            if (shuffleOrder.value.length === 0 || shufflePos < 0) {
+                regenerateShuffle()
+            } else {
+                shufflePos++
+                if (shufflePos >= shuffleOrder.value.length) {
+                    regenerateShuffle()
+                }
+            }
+            next = shuffleOrder.value[shufflePos]
+        } else {
+            next = (idx + 1) % playList.value.length
+        }
         playGlobalSong(playList.value[next])
     }
 
     const prevSong = () => {
         const idx = getCurrentSongIndex()
         if (idx === -1) return
-        const prev = playMode.value === 'random'
-            ? Math.floor(Math.random() * playList.value.length)
-            : (idx - 1 + playList.value.length) % playList.value.length
+        let prev
+        if (playMode.value === 'random') {
+            if (shufflePos > 0) {
+                shufflePos--
+                prev = shuffleOrder.value[shufflePos]
+            } else {
+                prev = idx
+            }
+        } else {
+            prev = (idx - 1 + playList.value.length) % playList.value.length
+        }
         playGlobalSong(playList.value[prev])
     }
 
@@ -263,6 +304,7 @@ export const usePlayerStore = defineStore('player', () => {
         playMode.value = modes[(i + 1) % modes.length]
         modeIcon.value = modeMap[playMode.value]
         localStorage.setItem('rhizome-play-mode', playMode.value)
+        if (playMode.value === 'random') regenerateShuffle()
     }
 
     const seekTo = (time) => {

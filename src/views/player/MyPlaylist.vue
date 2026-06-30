@@ -24,7 +24,11 @@
           </svg>
         </div>
         <div class="playlist-info">
-          <div class="playlist-name">{{ item.title }}</div>
+          <div class="playlist-name">
+            {{ item.title }}
+            <span v-if="item.isFavorites" class="pl-tag fav-tag">♥</span>
+            <span v-if="item.isAuto" class="pl-tag auto-tag">自动</span>
+          </div>
           <div class="playlist-meta">
             <span class="meta-item">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -51,6 +55,7 @@
             </svg>
           </button>
           <button
+              v-if="!item.isFavorites && !item.isAuto"
               class="song-btn"
               :class="{ 'delete-warning': deleteTargetId === item.localId && deleteCount > 0 }"
               @click="handleDeleteClick(item)"
@@ -170,6 +175,8 @@ const resetDeleteCount = () => {
 }
 
 const handleDeleteClick = (item) => {
+  // 禁止删除系统歌单
+  if (item.isFavorites || item.isAuto) return
   if (deleteTargetId.value !== item.localId) {
     // 不同歌单，重新计数
     deleteTargetId.value = item.localId
@@ -348,10 +355,14 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
   -ms-overflow-style: none;
 }
 .my-playlist::-webkit-scrollbar { display: none; }
-.playlist-header { padding: 16px; border-bottom: 2px solid var(--border-color); }
+.playlist-header { padding: 16px; border-bottom: 2px solid transparent; position: relative; }
+.playlist-header::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; background: var(--border-color); transform: scaleX(0); transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1); }
+.entered .playlist-header::after { transform: scaleX(1); }
 .playlist-header h2 { font-size: 20px; margin: 0 0 4px; }
 .desc { font-size: 12px; opacity: .7; margin: 0; }
-.playlist-toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 2px solid var(--border-color); }
+.playlist-toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 2px solid transparent; position: relative; }
+.playlist-toolbar::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; background: var(--border-color); transform: scaleX(0); transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1); }
+.entered .playlist-toolbar::after { transform: scaleX(1); }
 .rc-global-btn { height: 36px; padding: 0 14px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; transition: all .2s; font-size: 13px; }
 .rc-global-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; }
 .rc-global-btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-text); transform: translateY(-1px); }
@@ -379,6 +390,9 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
 .playlist-cover svg { width: 18px; height: 18px; stroke: currentColor; }
 .playlist-info { flex: 1; padding: 0 12px; }
 .playlist-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+.pl-tag { font-size: 10px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
+.fav-tag { color: #e74c3c; }
+.auto-tag { color: var(--text-primary); opacity: 0.5; border: 1px solid var(--border-color); }
 .playlist-meta { display: flex; gap: 16px; font-size: 12px; opacity: .65; margin-bottom: 4px; }
 .meta-item { display: inline-flex; align-items: center; gap: 4px; }
 .meta-item svg { width: 12px; height: 12px; }
@@ -436,22 +450,22 @@ onMounted(async () => { if (!localMusicStore.loaded && !localMusicStore.loading)
   opacity: 0; transform: scaleX(0);
   transition: opacity 0.12s ease, transform 0.13s cubic-bezier(0.25, 0, 0, 1);
 }
-.playlist-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.1s; }
+.playlist-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.08s; }
 .playlist-toolbar .rc-global-btn:nth-child(2) { transition-delay: 0.16s; }
 .entered .playlist-toolbar .rc-global-btn { opacity: 1; transform: scaleX(1); }
 
 .playlist-item {
-  opacity: 0; transform: translateX(-24px);
-  transition: opacity 0.16s cubic-bezier(0.2, 0, 0.2, 1),
-              transform 0.16s cubic-bezier(0.2, 0, 0.2, 1);
+  opacity: 0; transform: translateX(-20px);
+  transition: opacity 0.15s cubic-bezier(0.2, 0, 0.2, 1),
+              transform 0.15s cubic-bezier(0.2, 0, 0.2, 1);
 }
 .entered .playlist-item { opacity: 1; transform: translateX(0); }
-.playlist-item:nth-child(1) { transition-delay: 0.2s; }
-.playlist-item:nth-child(2) { transition-delay: 0.24s; }
-.playlist-item:nth-child(3) { transition-delay: 0.28s; }
-.playlist-item:nth-child(4) { transition-delay: 0.32s; }
-.playlist-item:nth-child(5) { transition-delay: 0.36s; }
-.playlist-item:nth-child(6) { transition-delay: 0.4s; }
-.playlist-item:nth-child(7) { transition-delay: 0.44s; }
-.playlist-item:nth-child(8) { transition-delay: 0.48s; }
+.playlist-item:nth-child(1) { transition-delay: 0.24s; }
+.playlist-item:nth-child(2) { transition-delay: 0.263s; }
+.playlist-item:nth-child(3) { transition-delay: 0.286s; }
+.playlist-item:nth-child(4) { transition-delay: 0.309s; }
+.playlist-item:nth-child(5) { transition-delay: 0.332s; }
+.playlist-item:nth-child(6) { transition-delay: 0.355s; }
+.playlist-item:nth-child(7) { transition-delay: 0.378s; }
+.playlist-item:nth-child(8) { transition-delay: 0.401s; }
 </style>

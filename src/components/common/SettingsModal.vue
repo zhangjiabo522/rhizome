@@ -40,6 +40,15 @@
             </button>
           </div>
         </div>
+        <div class="settings-row">
+          <span class="settings-label">每周自动歌单</span>
+          <div class="settings-stepper">
+            <button class="stepper-btn toggle-btn" :class="{ active: weeklyEnabled }" @click="toggleWeekly">
+              <span v-if="weeklyEnabled">ON</span>
+              <span v-else>OFF</span>
+            </button>
+          </div>
+        </div>
         <button class="settings-btn" @click="handleBackup">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-width="2"/></svg>
             <span>保存数据（备份）</span>
@@ -82,6 +91,7 @@ import { useLocalMusicStore } from '@/stores/localMusicStore'
 import AboutModal from './AboutModal.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import { generateReportBlob } from '@/composables/useReportGenerator'
+import { isWeeklyEnabled, setWeeklyEnabled } from '@/composables/useWeeklyPlaylists'
 
 const emit = defineEmits(['close'])
 const { themeClass } = useGlobalTheme()
@@ -112,6 +122,12 @@ const selectReportDir = async () => {
     reportPath.value = p
     localStorage.setItem('rhizome-report-path', p)
 }
+}
+
+const weeklyEnabled = ref(isWeeklyEnabled())
+const toggleWeekly = () => {
+  weeklyEnabled.value = !weeklyEnabled.value
+  setWeeklyEnabled(weeklyEnabled.value)
 }
 
 const changeLyricSize = (delta) => {
@@ -163,7 +179,7 @@ async function handleImage() {
 
   const isDark = document.documentElement.classList.contains('theme-dark')
   const now = new Date()
-  const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+  const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}-${String(now.getSeconds()).padStart(2,'0')}`
   const filename = `rhizome-play-record-${ts}.png`
   const blob = await generateReportBlob(songs, isDark, 'Rhizome', '播放记录 · Top 10')
   if (!blob) { showMsg('生成失败'); return }

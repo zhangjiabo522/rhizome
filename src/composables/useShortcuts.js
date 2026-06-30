@@ -11,6 +11,7 @@ const actionDefs = {
   volUp:        { label: '音量增大',        local: true,  global: true },
   volDown:      { label: '音量减小',        local: true,  global: true },
   toggleWindow: { label: '显示 / 隐藏窗口',  local: false, global: true },
+  toggleDesktopLyrics: { label: '显示 / 隐藏桌面歌词', local: true, global: true },
 }
 
 const defaults = {
@@ -37,6 +38,10 @@ const defaults = {
   toggleWindow: {
     local:  null,
     global: { code: 'Backslash',  ctrl: true,  shift: false, alt: false },
+  },
+  toggleDesktopLyrics: {
+    local:  null,
+    global: { code: 'Quote',      ctrl: true,  shift: false, alt: false },
   },
 }
 
@@ -91,6 +96,7 @@ function syncElectronGlobal() {
     volUp: 'media-vol-up',
     volDown: 'media-vol-down',
     toggleWindow: 'toggle-window',
+    toggleDesktopLyrics: 'toggle-desktop-lyrics',
   }
   for (const [action, def] of Object.entries(actionDefs)) {
     if (!def.global) continue
@@ -108,6 +114,7 @@ export function useShortcuts(handlers) {
     volUp:        () => handlers.volUp?.(),
     volDown:      () => handlers.volDown?.(),
     toggleWindow: () => window.electron?.minimize?.(), // placeholder
+    toggleDesktopLyrics: () => handlers.toggleDesktopLyrics?.(),
   }
 
   const onKeydown = (e) => {
@@ -120,6 +127,8 @@ export function useShortcuts(handlers) {
 
   onMounted(() => {
     window.addEventListener('keydown', onKeydown)
+    // 同步全局快捷键到 Electron（覆盖 main.js 初始默认值以反映用户自定义）
+    syncElectronGlobal()
     // Electron IPC 全局快捷键
     const ipc = window.electron
     ipc?.onMediaPlayPause?.(() => handlers.togglePlay?.())
@@ -127,6 +136,10 @@ export function useShortcuts(handlers) {
     ipc?.onMediaPrev?.(() => handlers.prevSong?.())
     ipc?.onMediaVolUp?.(() => handlers.volUp?.())
     ipc?.onMediaVolDown?.(() => handlers.volDown?.())
+    // 桌面歌词全局快捷键
+    if (ipc?.onToggleDesktopLyrics) {
+      ipc.onToggleDesktopLyrics(() => handlers.toggleDesktopLyrics?.())
+    }
     // toggleWindow 特殊处理：切换主窗口显隐
     if (ipc?.onToggleWindow) {
       // 如果 preload 已暴露了 onToggleWindow

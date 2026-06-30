@@ -6,7 +6,7 @@
     </div>
 
     <div class="song-list">
-      <div class="song-item" v-for="(item, idx) in realHistoryList" :key="idx" @dblclick="playSong(item)">
+      <div class="song-item" v-for="(item, idx) in realHistoryList" :key="idx" @dblclick="playSong(item)" :class="{ playing: isCurrentSong(item) }">
         <div class="song-index">{{ idx + 1 }}</div>
         <div class="song-cover" v-if="item.coverUrl">
           <img :src="item.coverUrl" alt="cover" />
@@ -25,6 +25,7 @@
               <path d="M5 3l14 9-14 9V3z" stroke-width="2"/>
             </svg>
           </button>
+          <FavoriteButton :song="item" />
         </div>
       </div>
 
@@ -36,6 +37,13 @@
         <p>暂无播放历史</p>
       </div>
     </div>
+
+    <!-- 底部浮动按钮组 -->
+    <div class="float-actions" v-if="playerStore.currentSong">
+      <button class="float-btn" @click="scrollToCurrent" title="定位到当前播放歌曲">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -44,13 +52,21 @@ import { ref, computed, onMounted } from "vue";
 import { useGlobalTheme } from "@/composables/useGlobalTheme";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useLocalMusicStore } from "@/stores/localMusicStore";
+import { useCurrentSongHighlight } from "@/composables/useCurrentSongHighlight";
+import FavoriteButton from "@/components/common/FavoriteButton.vue";
 
 const { themeClass } = useGlobalTheme();
 const playerStore = usePlayerStore();
 const localMusicStore = useLocalMusicStore();
+const { isCurrentSong } = useCurrentSongHighlight();
 
 const rawHistory = ref([]);
 const entered = ref(false);
+
+const scrollToCurrent = () => {
+  const el = document.querySelector('.song-item.playing')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 
 const formatTime = (sec) => {
   if (!sec) return "00:00";
@@ -130,8 +146,15 @@ onMounted(() => {
 
 .history-header {
   padding: 16px;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid transparent;
+  position: relative;
 }
+.history-header::after {
+  content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
+  background: var(--border-color); transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1);
+}
+.entered .history-header::after { transform: scaleX(1); }
 
 .history-header h2 {
   font-size: 20px;
@@ -147,8 +170,15 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   padding: 12px;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid transparent;
+  position: relative;
 }
+.history-toolbar::after {
+  content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
+  background: var(--border-color); transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.25, 0, 0, 1);
+}
+.entered .history-toolbar::after { transform: scaleX(1); }
 
 .rc-global-btn {
   height: 36px;
@@ -200,6 +230,18 @@ onMounted(() => {
 
 .song-item:hover::before {
   transform: scaleX(1);
+}
+
+/* 当前播放歌曲高亮 */
+.song-item.playing {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+.song-item.playing .song-index,
+.song-item.playing .song-name,
+.song-item.playing .song-artist,
+.song-item.playing .song-duration {
+  color: inherit;
 }
 
 .song-item:hover {
@@ -297,6 +339,41 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
+/* 底部浮动按钮组 */
+.float-actions {
+  position: fixed;
+  bottom: 84px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 10;
+}
+.float-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.float-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+}
+.float-btn:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+
 /* === 精密组装入场 === */
 .history-header h2 {
   opacity: 0;
@@ -329,7 +406,7 @@ onMounted(() => {
   transition: opacity 0.12s ease,
               transform 0.13s cubic-bezier(0.25, 0, 0, 1);
 }
-.history-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.1s; }
+.history-toolbar .rc-global-btn:nth-child(1) { transition-delay: 0.08s; }
 .history-toolbar .rc-global-btn:nth-child(2) { transition-delay: 0.16s; }
 .entered .history-toolbar .rc-global-btn {
   opacity: 1;
@@ -346,29 +423,29 @@ onMounted(() => {
   opacity: 1;
   transform: translateX(0);
 }
-.song-item:nth-child(1) { transition-delay: 0.25s; }
-.song-item:nth-child(2) { transition-delay: 0.278s; }
-.song-item:nth-child(3) { transition-delay: 0.306s; }
-.song-item:nth-child(4) { transition-delay: 0.334s; }
-.song-item:nth-child(5) { transition-delay: 0.362s; }
-.song-item:nth-child(6) { transition-delay: 0.39s; }
-.song-item:nth-child(7) { transition-delay: 0.418s; }
-.song-item:nth-child(8) { transition-delay: 0.446s; }
-.song-item:nth-child(9) { transition-delay: 0.474s; }
-.song-item:nth-child(10) { transition-delay: 0.502s; }
-.song-item:nth-child(11) { transition-delay: 0.53s; }
-.song-item:nth-child(12) { transition-delay: 0.558s; }
-.song-item:nth-child(13) { transition-delay: 0.586s; }
-.song-item:nth-child(14) { transition-delay: 0.614s; }
-.song-item:nth-child(15) { transition-delay: 0.642s; }
-.song-item:nth-child(16) { transition-delay: 0.67s; }
-.song-item:nth-child(17) { transition-delay: 0.698s; }
-.song-item:nth-child(18) { transition-delay: 0.726s; }
-.song-item:nth-child(19) { transition-delay: 0.754s; }
-.song-item:nth-child(20) { transition-delay: 0.782s; }
-.song-item:nth-child(21) { transition-delay: 0.81s; }
-.song-item:nth-child(22) { transition-delay: 0.838s; }
-.song-item:nth-child(23) { transition-delay: 0.866s; }
-.song-item:nth-child(24) { transition-delay: 0.894s; }
-.song-item:nth-child(25) { transition-delay: 0.922s; }
+.song-item:nth-child(1) { transition-delay: 0.24s; }
+.song-item:nth-child(2) { transition-delay: 0.263s; }
+.song-item:nth-child(3) { transition-delay: 0.286s; }
+.song-item:nth-child(4) { transition-delay: 0.309s; }
+.song-item:nth-child(5) { transition-delay: 0.332s; }
+.song-item:nth-child(6) { transition-delay: 0.355s; }
+.song-item:nth-child(7) { transition-delay: 0.378s; }
+.song-item:nth-child(8) { transition-delay: 0.401s; }
+.song-item:nth-child(9) { transition-delay: 0.424s; }
+.song-item:nth-child(10) { transition-delay: 0.447s; }
+.song-item:nth-child(11) { transition-delay: 0.47s; }
+.song-item:nth-child(12) { transition-delay: 0.493s; }
+.song-item:nth-child(13) { transition-delay: 0.516s; }
+.song-item:nth-child(14) { transition-delay: 0.539s; }
+.song-item:nth-child(15) { transition-delay: 0.562s; }
+.song-item:nth-child(16) { transition-delay: 0.585s; }
+.song-item:nth-child(17) { transition-delay: 0.608s; }
+.song-item:nth-child(18) { transition-delay: 0.631s; }
+.song-item:nth-child(19) { transition-delay: 0.654s; }
+.song-item:nth-child(20) { transition-delay: 0.677s; }
+.song-item:nth-child(21) { transition-delay: 0.7s; }
+.song-item:nth-child(22) { transition-delay: 0.723s; }
+.song-item:nth-child(23) { transition-delay: 0.746s; }
+.song-item:nth-child(24) { transition-delay: 0.769s; }
+.song-item:nth-child(25) { transition-delay: 0.792s; }
 </style>
