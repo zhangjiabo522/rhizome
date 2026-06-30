@@ -1,7 +1,7 @@
 {
   "name": "rhizome",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "productName": "Rhizome",
   "description": "Rhizome - 简约的本地音乐播放器 | 支持无损音频、桌面歌词、频谱可视化",
   "author": "AutumnDew",
